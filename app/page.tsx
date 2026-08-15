@@ -70,7 +70,6 @@ export default function Home() {
           </div>
           <div className="section-heading">
             <div><h2>Seus acessos</h2><p>{accounts.length} itens protegidos</p></div>
-            <button onClick={() => setShowAdd(true)}>+ Novo acesso</button>
           </div>
           <div className="account-list" aria-live="polite">
             {filtered.map((account) => (
