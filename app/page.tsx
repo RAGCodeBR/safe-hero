@@ -2,13 +2,13 @@
 
 import { useMemo, useState } from "react";
 
-type Account = { name: string; detail: string; initial: string; color: string; password: string; category: string };
+type Account = { id: string; name: string; detail: string; initial: string; color: string; password: string; category: string };
 
 const initialAccounts: Account[] = [
-  { name: "Instagram", detail: "arthur.silva", initial: "IG", color: "#f18bb4", password: "hero#2026", category: "Redes sociais" },
-  { name: "Google", detail: "arthur@gmail.com", initial: "G", color: "#79a7ff", password: "safe-access", category: "Trabalho" },
-  { name: "Netflix", detail: "Família", initial: "N", color: "#ff6f78", password: "stream123", category: "Entretenimento" },
-  { name: "Nubank", detail: "Conta pessoal", initial: "NU", color: "#a77af7", password: "bank-guard", category: "Finanças" },
+  { id: "instagram", name: "Instagram", detail: "arthur.silva", initial: "IG", color: "#f18bb4", password: "hero#2026", category: "Redes sociais" },
+  { id: "google", name: "Google", detail: "arthur@gmail.com", initial: "G", color: "#79a7ff", password: "safe-access", category: "Trabalho" },
+  { id: "netflix", name: "Netflix", detail: "Família", initial: "N", color: "#ff6f78", password: "stream123", category: "Entretenimento" },
+  { id: "nubank", name: "Nubank", detail: "Conta pessoal", initial: "NU", color: "#a77af7", password: "bank-guard", category: "Finanças" },
 ];
 
 export default function Home() {
@@ -16,7 +16,9 @@ export default function Home() {
   const [visible, setVisible] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("Início");
   const [showAdd, setShowAdd] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [accounts, setAccounts] = useState(initialAccounts);
+  const editingAccount = accounts.find((account) => account.id === editingId);
   const filtered = useMemo(() => {
     const term = query.toLowerCase();
     return accounts.filter((account) => `${account.name} ${account.detail} ${account.category}`.toLowerCase().includes(term));
@@ -25,8 +27,21 @@ export default function Home() {
   function addAccount(formData: FormData) {
     const name = String(formData.get("name") || "Novo acesso");
     const detail = String(formData.get("login") || "Login pessoal");
-    setAccounts((current) => [{ name, detail, initial: name.slice(0, 2).toUpperCase(), color: "#72c6e8", password: "nova-senha", category: "Pessoal" }, ...current]);
+    const password = String(formData.get("password") || "nova-senha");
+    setAccounts((current) => [{ id: `account-${Date.now()}`, name, detail, initial: name.slice(0, 2).toUpperCase(), color: "#72c6e8", password, category: "Pessoal" }, ...current]);
     setShowAdd(false);
+  }
+
+  function updateAccount(formData: FormData) {
+    if (!editingId) return;
+    const name = String(formData.get("name") || "Acesso");
+    const detail = String(formData.get("login") || "Login pessoal");
+    const password = String(formData.get("password") || "");
+    setAccounts((current) => current.map((account) => account.id === editingId
+      ? { ...account, name, detail, password, initial: name.slice(0, 2).toUpperCase() }
+      : account));
+    setVisible(null);
+    setEditingId(null);
   }
 
   return (
@@ -59,11 +74,14 @@ export default function Home() {
           </div>
           <div className="account-list" aria-live="polite">
             {filtered.map((account) => (
-              <article className="account-row" key={`${account.name}-${account.detail}`}>
+              <article className="account-row" key={account.id}>
                 <div className="app-icon" style={{ background: account.color }}>{account.initial}</div>
                 <div className="account-main"><strong>{account.name}</strong><span>{account.detail}</span></div>
                 <div className="password-preview">{visible === account.name ? account.password : "••••••••"}</div>
-                <button className="eye-button" onClick={() => setVisible(visible === account.name ? null : account.name)} aria-label={`${visible === account.name ? "Ocultar" : "Mostrar"} senha de ${account.name}`}>{visible === account.name ? "◉" : "◎"}</button>
+                <div className="account-actions">
+                  <button className="edit-button" onClick={() => setEditingId(account.id)} aria-label={`Editar acesso de ${account.name}`}>Editar</button>
+                  <button className="eye-button" onClick={() => setVisible(visible === account.name ? null : account.name)} aria-label={`${visible === account.name ? "Ocultar" : "Mostrar"} senha de ${account.name}`}>{visible === account.name ? "◉" : "◎"}</button>
+                </div>
               </article>
             ))}
             {filtered.length === 0 && <div className="empty-state"><span>⌕</span><strong>Nenhum acesso encontrado</strong><p>Tente buscar por outro nome.</p></div>}
@@ -83,7 +101,21 @@ export default function Home() {
               <div className="sheet-title"><div><p>NOVO ACESSO</p><h2>Proteja uma nova conta</h2></div><button type="button" onClick={() => setShowAdd(false)} aria-label="Fechar">×</button></div>
               <label>Aplicativo<input name="name" placeholder="Ex.: Spotify" required autoFocus /></label>
               <label>Usuário ou e-mail<input name="login" placeholder="voce@exemplo.com" required /></label>
+              <label>Senha<input name="password" type="password" placeholder="Digite uma senha segura" required /></label>
               <button className="save-button" type="submit">Salvar no cofre</button>
+            </form>
+          </div>
+        )}
+
+        {editingAccount && (
+          <div className="modal-backdrop" role="presentation" onMouseDown={() => setEditingId(null)}>
+            <form className="add-sheet" onSubmit={(event) => { event.preventDefault(); updateAccount(new FormData(event.currentTarget)); }} onMouseDown={(event) => event.stopPropagation()}>
+              <div className="sheet-handle" />
+              <div className="sheet-title"><div><p>EDITAR ACESSO</p><h2>Atualize sua conta</h2></div><button type="button" onClick={() => setEditingId(null)} aria-label="Fechar">×</button></div>
+              <label>Aplicativo<input name="name" defaultValue={editingAccount.name} required autoFocus /></label>
+              <label>Usuário ou e-mail<input name="login" defaultValue={editingAccount.detail} required /></label>
+              <label>Senha<input name="password" type="text" defaultValue={editingAccount.password} required /></label>
+              <button className="save-button" type="submit">Salvar alterações</button>
             </form>
           </div>
         )}
