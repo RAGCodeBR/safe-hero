@@ -78,14 +78,18 @@ export default function Home() {
   const [showGroups, setShowGroups] = useState(false);
   const [showSecurity, setShowSecurity] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [editingProfile, setEditingProfile] = useState(false);
   const [showEditPassword, setShowEditPassword] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [groups, setGroups] = useState(initialGroups);
   const [activeGroupId, setActiveGroupId] = useState("personal");
   const [accounts, setAccounts] = useState(initialAccounts);
+  const [profileName, setProfileName] = useState("Arthur Silva");
+  const [profileDescription, setProfileDescription] = useState("Cofre pessoal Safe Hero");
   const editingAccount = accounts.find((account) => account.id === editingId);
   const activeGroup = groups.find((group) => group.id === activeGroupId);
   const groupAccounts = activeGroupId === "all" ? accounts : accounts.filter((account) => account.groupId === activeGroupId);
+  const profileInitials = profileName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "SH";
   const security = useMemo(() => buildSecurityReport(accounts), [accounts]);
   const filtered = useMemo(() => {
     const term = query.toLowerCase();
@@ -129,7 +133,16 @@ export default function Home() {
 
   function closeProfile() {
     setShowProfile(false);
+    setEditingProfile(false);
     setActiveTab("Início");
+  }
+
+  function updateProfile(formData: FormData) {
+    const name = String(formData.get("profileName") || "").trim();
+    const description = String(formData.get("profileDescription") || "").trim();
+    if (name) setProfileName(name);
+    if (description) setProfileDescription(description);
+    setEditingProfile(false);
   }
 
   return (
@@ -143,8 +156,8 @@ export default function Home() {
 
         <div className="content">
           <div className="welcome">
-            <div><p>Olá, Arthur!</p><h1>Seus acessos estão seguros.</h1></div>
-            <div className="avatar">AS</div>
+            <div><p>Olá, {profileName.split(" ")[0]}!</p><h1>Seus acessos estão seguros.</h1></div>
+            <div className="avatar">{profileInitials}</div>
           </div>
           <article className="security-card">
             <div className="score-ring"><span>{security.score}</span><small>/100</small></div>
@@ -239,18 +252,30 @@ export default function Home() {
         {showProfile && (
           <div className="modal-backdrop edit-backdrop" role="presentation" onMouseDown={closeProfile}>
             <section className="profile-sheet" role="dialog" aria-modal="true" aria-labelledby="profile-title" onMouseDown={(event) => event.stopPropagation()}>
-              <div className="sheet-title"><div><p>MEU PERFIL</p><h2 id="profile-title">Sua conta Safe Hero</h2></div><button type="button" onClick={closeProfile} aria-label="Fechar">×</button></div>
-              <div className="profile-hero">
-                <div className="profile-avatar">AS</div>
-                <div><h3>Arthur Silva</h3><p>Cofre pessoal Safe Hero</p></div>
-              </div>
-              <div className="profile-stats" aria-label="Resumo do perfil">
-                <div><strong>{accounts.length}</strong><span>Acessos</span></div>
-                <div><strong>{groups.length}</strong><span>Grupos</span></div>
-                <div><strong>{security.score}</strong><span>Proteção</span></div>
-              </div>
-              <div className="profile-detail"><span>Grupo ativo</span><strong>{activeGroupId === "all" ? "Todos os acessos" : activeGroup?.name || "Nenhum grupo"}</strong></div>
-              <button className="save-button" type="button" onClick={closeProfile}>Fechar perfil</button>
+              <div className="sheet-title"><div><p>{editingProfile ? "EDITAR PERFIL" : "MEU PERFIL"}</p><h2 id="profile-title">{editingProfile ? "Atualize seus dados" : "Sua conta Safe Hero"}</h2></div><button type="button" onClick={closeProfile} aria-label="Fechar">×</button></div>
+              {editingProfile ? (
+                <form className="profile-edit-form" onSubmit={(event) => { event.preventDefault(); updateProfile(new FormData(event.currentTarget)); }}>
+                  <label>Nome<input name="profileName" defaultValue={profileName} maxLength={40} required autoFocus /></label>
+                  <label>Descrição<input name="profileDescription" defaultValue={profileDescription} maxLength={60} required /></label>
+                  <button className="save-button" type="submit">Salvar alterações</button>
+                  <button className="secondary-button" type="button" onClick={() => setEditingProfile(false)}>Cancelar</button>
+                </form>
+              ) : (
+                <>
+                  <div className="profile-hero">
+                    <div className="profile-avatar">{profileInitials}</div>
+                    <div><h3>{profileName}</h3><p>{profileDescription}</p></div>
+                  </div>
+                  <div className="profile-stats" aria-label="Resumo do perfil">
+                    <div><strong>{accounts.length}</strong><span>Acessos</span></div>
+                    <div><strong>{groups.length}</strong><span>Grupos</span></div>
+                    <div><strong>{security.score}</strong><span>Proteção</span></div>
+                  </div>
+                  <div className="profile-detail"><span>Grupo ativo</span><strong>{activeGroupId === "all" ? "Todos os acessos" : activeGroup?.name || "Nenhum grupo"}</strong></div>
+                  <button className="secondary-button edit-profile-button" type="button" onClick={() => setEditingProfile(true)}><span aria-hidden="true">&#9998;</span> Editar perfil</button>
+                  <button className="save-button" type="button" onClick={closeProfile}>Fechar perfil</button>
+                </>
+              )}
             </section>
           </div>
         )}
