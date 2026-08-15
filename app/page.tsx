@@ -68,6 +68,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState("Início");
   const [showAdd, setShowAdd] = useState(false);
   const [showSecurity, setShowSecurity] = useState(false);
+  const [showEditPassword, setShowEditPassword] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [accounts, setAccounts] = useState(initialAccounts);
   const editingAccount = accounts.find((account) => account.id === editingId);
@@ -131,7 +132,7 @@ export default function Home() {
                 <div className="account-main"><strong>{account.name}</strong><span>{account.detail}</span></div>
                 <div className="password-preview">{visible === account.name ? account.password : "••••••••"}</div>
                 <div className="account-actions">
-                  <button className="edit-button" onClick={() => setEditingId(account.id)} aria-label={`Editar acesso de ${account.name}`} title="Editar acesso"><span aria-hidden="true">&#9998;</span></button>
+                  <button className="edit-button" onClick={() => { setEditingId(account.id); setShowEditPassword(false); }} aria-label={`Editar acesso de ${account.name}`} title="Editar acesso"><span aria-hidden="true">&#9998;</span></button>
                   <button className="eye-button" onClick={() => setVisible(visible === account.name ? null : account.name)} aria-label={`${visible === account.name ? "Ocultar" : "Mostrar"} senha de ${account.name}`}>{visible === account.name ? "◉" : "◎"}</button>
                 </div>
               </article>
@@ -167,7 +168,7 @@ export default function Home() {
               <div className="sheet-title"><div><p>EDITAR ACESSO</p><h2>Atualize sua conta</h2></div><button type="button" onClick={() => setEditingId(null)} aria-label="Fechar">×</button></div>
               <label>Aplicativo<input name="name" defaultValue={editingAccount.name} required autoFocus /></label>
               <label>Usuário ou e-mail<input name="login" defaultValue={editingAccount.detail} required /></label>
-              <label>Senha<input name="password" type="text" defaultValue={editingAccount.password} required /></label>
+              <label>Senha<div className="password-input-wrap"><input name="password" type={showEditPassword ? "text" : "password"} defaultValue={editingAccount.password} required /><button type="button" onClick={() => setShowEditPassword((current) => !current)} aria-label={showEditPassword ? "Ocultar senha" : "Mostrar senha"}>{showEditPassword ? "◉" : "◎"}</button></div></label>
               <label className="toggle-field"><input name="twoFactor" type="checkbox" defaultChecked={editingAccount.twoFactor} /><span><strong>Autenticação em dois fatores</strong><small>Marque se esta conta usa 2FA.</small></span></label>
               <button className="save-button" type="submit">Salvar alterações</button>
             </form>
