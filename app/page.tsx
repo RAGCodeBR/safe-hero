@@ -108,8 +108,8 @@ export default function Home() {
         )}
 
         {editingAccount && (
-          <div className="modal-backdrop" role="presentation" onMouseDown={() => setEditingId(null)}>
-            <form className="add-sheet" onSubmit={(event) => { event.preventDefault(); updateAccount(new FormData(event.currentTarget)); }} onMouseDown={(event) => event.stopPropagation()}>
+          <div className="modal-backdrop edit-backdrop" role="presentation" onMouseDown={() => setEditingId(null)}>
+            <form className="add-sheet edit-sheet" onSubmit={(event) => { event.preventDefault(); updateAccount(new FormData(event.currentTarget)); }} onMouseDown={(event) => event.stopPropagation()}>
               <div className="sheet-handle" />
               <div className="sheet-title"><div><p>EDITAR ACESSO</p><h2>Atualize sua conta</h2></div><button type="button" onClick={() => setEditingId(null)} aria-label="Fechar">×</button></div>
               <label>Aplicativo<input name="name" defaultValue={editingAccount.name} required autoFocus /></label>
