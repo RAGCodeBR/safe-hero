@@ -12,13 +12,21 @@ type Account = {
   category: string;
   twoFactor: boolean;
   updatedAt: string;
+  groupId: string;
 };
 
+type AccessGroup = { id: string; name: string; color: string };
+
+const initialGroups: AccessGroup[] = [
+  { id: "personal", name: "Pessoal", color: "#57b8e6" },
+  { id: "work", name: "Trabalho", color: "#7b8ff2" },
+];
+
 const initialAccounts: Account[] = [
-  { id: "instagram", name: "Instagram", detail: "arthur.silva", initial: "IG", color: "#f18bb4", password: "hero#2026", category: "Redes sociais", twoFactor: true, updatedAt: "2026-08-01" },
-  { id: "google", name: "Google", detail: "arthur@gmail.com", initial: "G", color: "#79a7ff", password: "safe-access", category: "Trabalho", twoFactor: true, updatedAt: "2026-07-20" },
-  { id: "netflix", name: "Netflix", detail: "Família", initial: "N", color: "#ff6f78", password: "stream123", category: "Entretenimento", twoFactor: false, updatedAt: "2026-03-01" },
-  { id: "nubank", name: "Nubank", detail: "Conta pessoal", initial: "NU", color: "#a77af7", password: "bank-guard", category: "Finanças", twoFactor: true, updatedAt: "2026-08-10" },
+  { id: "instagram", name: "Instagram", detail: "arthur.silva", initial: "IG", color: "#f18bb4", password: "hero#2026", category: "Redes sociais", twoFactor: true, updatedAt: "2026-08-01", groupId: "personal" },
+  { id: "google", name: "Google", detail: "arthur@gmail.com", initial: "G", color: "#79a7ff", password: "safe-access", category: "Trabalho", twoFactor: true, updatedAt: "2026-07-20", groupId: "work" },
+  { id: "netflix", name: "Netflix", detail: "Família", initial: "N", color: "#ff6f78", password: "stream123", category: "Entretenimento", twoFactor: false, updatedAt: "2026-03-01", groupId: "personal" },
+  { id: "nubank", name: "Nubank", detail: "Conta pessoal", initial: "NU", color: "#a77af7", password: "bank-guard", category: "Finanças", twoFactor: true, updatedAt: "2026-08-10", groupId: "personal" },
 ];
 
 const commonPasswords = new Set(["123456", "password", "qwerty", "senha", "senha123", "admin", "letmein"]);
@@ -67,23 +75,29 @@ export default function Home() {
   const [visible, setVisible] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("Início");
   const [showAdd, setShowAdd] = useState(false);
+  const [showGroups, setShowGroups] = useState(false);
   const [showSecurity, setShowSecurity] = useState(false);
   const [showEditPassword, setShowEditPassword] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [groups, setGroups] = useState(initialGroups);
+  const [activeGroupId, setActiveGroupId] = useState("personal");
   const [accounts, setAccounts] = useState(initialAccounts);
   const editingAccount = accounts.find((account) => account.id === editingId);
+  const activeGroup = groups.find((group) => group.id === activeGroupId);
+  const groupAccounts = activeGroupId === "all" ? accounts : accounts.filter((account) => account.groupId === activeGroupId);
   const security = useMemo(() => buildSecurityReport(accounts), [accounts]);
   const filtered = useMemo(() => {
     const term = query.toLowerCase();
-    return accounts.filter((account) => `${account.name} ${account.detail} ${account.category}`.toLowerCase().includes(term));
-  }, [accounts, query]);
+    return groupAccounts.filter((account) => `${account.name} ${account.detail} ${account.category}`.toLowerCase().includes(term));
+  }, [groupAccounts, query]);
 
   function addAccount(formData: FormData) {
     const name = String(formData.get("name") || "Novo acesso");
     const detail = String(formData.get("login") || "Login pessoal");
     const password = String(formData.get("password") || "nova-senha");
     const twoFactor = formData.get("twoFactor") === "on";
-    setAccounts((current) => [{ id: `account-${Date.now()}`, name, detail, initial: name.slice(0, 2).toUpperCase(), color: "#72c6e8", password, category: "Pessoal", twoFactor, updatedAt: new Date().toISOString() }, ...current]);
+    const groupId = String(formData.get("groupId") || (activeGroupId === "all" ? groups[0]?.id : activeGroupId));
+    setAccounts((current) => [{ id: `account-${Date.now()}`, name, detail, initial: name.slice(0, 2).toUpperCase(), color: "#72c6e8", password, category: "Pessoal", twoFactor, updatedAt: new Date().toISOString(), groupId }, ...current]);
     setShowAdd(false);
   }
 
@@ -93,11 +107,23 @@ export default function Home() {
     const detail = String(formData.get("login") || "Login pessoal");
     const password = String(formData.get("password") || "");
     const twoFactor = formData.get("twoFactor") === "on";
+    const groupId = String(formData.get("groupId") || groups[0]?.id);
     setAccounts((current) => current.map((account) => account.id === editingId
-      ? { ...account, name, detail, password, twoFactor, updatedAt: new Date().toISOString(), initial: name.slice(0, 2).toUpperCase() }
+      ? { ...account, name, detail, password, twoFactor, groupId, updatedAt: new Date().toISOString(), initial: name.slice(0, 2).toUpperCase() }
       : account));
     setVisible(null);
     setEditingId(null);
+  }
+
+  function createGroup(formData: FormData) {
+    const name = String(formData.get("groupName") || "").trim();
+    if (!name) return;
+    const palette = ["#57b8e6", "#7b8ff2", "#56b99a", "#ed9e63", "#c47ed8"];
+    const id = `group-${Date.now()}`;
+    setGroups((current) => [...current, { id, name, color: palette[current.length % palette.length] }]);
+    setActiveGroupId(id);
+    setShowGroups(false);
+    setQuery("");
   }
 
   return (
@@ -106,7 +132,7 @@ export default function Home() {
         <header className="topbar">
           <div className="brand-mark" aria-hidden="true"><span>✓</span></div>
           <div className="brand-copy"><strong>Safe Hero</strong><small>Proteção que acompanha você</small></div>
-          <button className="icon-button" aria-label="Abrir notificações"><span className="bell">●</span></button>
+          <button className="icon-button group-switch-button" onClick={() => setShowGroups(true)} aria-label="Criar ou trocar grupo" title="Grupos de acesso"><span className="group-glyph" aria-hidden="true"><i /><i /></span><b style={{ background: activeGroup?.color || "#57b8e6" }} /></button>
         </header>
 
         <div className="content">
@@ -124,7 +150,7 @@ export default function Home() {
             <input value={query} onChange={(event) => setQuery(event.target.value)} aria-label="Buscar acessos" placeholder="Buscar senha ou aplicativo" />
             {query && <button onClick={() => setQuery("")} aria-label="Limpar busca">×</button>}
           </div>
-          <div className="section-heading"><div><h2>Seus acessos</h2><p>{accounts.length} itens protegidos</p></div></div>
+          <div className="section-heading"><div><h2>{activeGroupId === "all" ? "Todos os acessos" : `Acessos — ${activeGroup?.name || "Grupo"}`}</h2><p>{groupAccounts.length} itens neste grupo</p></div></div>
           <div className="account-list" aria-live="polite">
             {filtered.map((account) => (
               <article className="account-row" key={account.id}>
@@ -155,6 +181,7 @@ export default function Home() {
               <label>Aplicativo<input name="name" placeholder="Ex.: Spotify" required autoFocus /></label>
               <label>Usuário ou e-mail<input name="login" placeholder="voce@exemplo.com" required /></label>
               <label>Senha<input name="password" type="password" placeholder="Digite uma senha segura" required /></label>
+              <label>Grupo<select name="groupId" defaultValue={activeGroupId === "all" ? groups[0]?.id : activeGroupId}>{groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}</select></label>
               <label className="toggle-field"><input name="twoFactor" type="checkbox" /><span><strong>Autenticação em dois fatores</strong><small>Marque se esta conta usa 2FA.</small></span></label>
               <button className="save-button" type="submit">Salvar no cofre</button>
             </form>
@@ -169,9 +196,29 @@ export default function Home() {
               <label>Aplicativo<input name="name" defaultValue={editingAccount.name} required autoFocus /></label>
               <label>Usuário ou e-mail<input name="login" defaultValue={editingAccount.detail} required /></label>
               <label>Senha<div className="password-input-wrap"><input name="password" type={showEditPassword ? "text" : "password"} defaultValue={editingAccount.password} required /><button type="button" onClick={() => setShowEditPassword((current) => !current)} aria-label={showEditPassword ? "Ocultar senha" : "Mostrar senha"}>{showEditPassword ? "◉" : "◎"}</button></div></label>
+              <label>Grupo<select name="groupId" defaultValue={editingAccount.groupId}>{groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}</select></label>
               <label className="toggle-field"><input name="twoFactor" type="checkbox" defaultChecked={editingAccount.twoFactor} /><span><strong>Autenticação em dois fatores</strong><small>Marque se esta conta usa 2FA.</small></span></label>
               <button className="save-button" type="submit">Salvar alterações</button>
             </form>
+          </div>
+        )}
+
+        {showGroups && (
+          <div className="modal-backdrop edit-backdrop" role="presentation" onMouseDown={() => setShowGroups(false)}>
+            <section className="group-sheet" role="dialog" aria-modal="true" aria-labelledby="group-title" onMouseDown={(event) => event.stopPropagation()}>
+              <div className="sheet-title"><div><p>GRUPOS DE ACESSO</p><h2 id="group-title">Organize seu cofre</h2></div><button type="button" onClick={() => setShowGroups(false)} aria-label="Fechar">×</button></div>
+              <div className="group-list">
+                <button className={activeGroupId === "all" ? "selected" : ""} onClick={() => { setActiveGroupId("all"); setShowGroups(false); setQuery(""); }}><span className="group-avatar all">•••</span><span><strong>Todos os acessos</strong><small>{accounts.length} itens</small></span><b>{activeGroupId === "all" ? "✓" : "›"}</b></button>
+                {groups.map((group) => {
+                  const count = accounts.filter((account) => account.groupId === group.id).length;
+                  return <button key={group.id} className={activeGroupId === group.id ? "selected" : ""} onClick={() => { setActiveGroupId(group.id); setShowGroups(false); setQuery(""); }}><span className="group-avatar" style={{ background: group.color }}>{group.name.slice(0, 2).toUpperCase()}</span><span><strong>{group.name}</strong><small>{count} {count === 1 ? "item" : "itens"}</small></span><b>{activeGroupId === group.id ? "✓" : "›"}</b></button>;
+                })}
+              </div>
+              <form className="new-group-form" onSubmit={(event) => { event.preventDefault(); createGroup(new FormData(event.currentTarget)); }}>
+                <label>Novo grupo<input name="groupName" placeholder="Ex.: Família" maxLength={24} required /></label>
+                <button type="submit" aria-label="Criar grupo">+</button>
+              </form>
+            </section>
           </div>
         )}
 
