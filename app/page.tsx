@@ -79,7 +79,7 @@ export default function Home() {
                 <div className="account-main"><strong>{account.name}</strong><span>{account.detail}</span></div>
                 <div className="password-preview">{visible === account.name ? account.password : "••••••••"}</div>
                 <div className="account-actions">
-                  <button className="edit-button" onClick={() => setEditingId(account.id)} aria-label={`Editar acesso de ${account.name}`}>Editar</button>
+                  <button className="edit-button" onClick={() => setEditingId(account.id)} aria-label={`Editar acesso de ${account.name}`} title="Editar acesso"><span aria-hidden="true">&#9998;</span></button>
                   <button className="eye-button" onClick={() => setVisible(visible === account.name ? null : account.name)} aria-label={`${visible === account.name ? "Ocultar" : "Mostrar"} senha de ${account.name}`}>{visible === account.name ? "◉" : "◎"}</button>
                 </div>
               </article>

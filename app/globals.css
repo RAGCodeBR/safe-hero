@@ -24,3 +24,4 @@ button { cursor: pointer; }
 @media (max-width: 520px) { .page-shell { padding: 0; }.phone-app { width: 100%; height: 100vh; min-height: 620px; border-radius: 0; }.topbar { padding-top: max(18px, env(safe-area-inset-top)); } }
 @media (max-height: 720px) { .content { padding-top: 16px; }.welcome { margin-bottom: 14px; }.search-wrap { margin: 15px 0; }.security-card { padding: 14px; } }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; animation: none !important; transition: none !important; } }
+.edit-button { width: 30px; display: grid; place-items: center; padding: 0; font-size: 17px; }
