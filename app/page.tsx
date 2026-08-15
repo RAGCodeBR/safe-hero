@@ -20,18 +20,6 @@ type Account = {
 
 type AccessGroup = { id: string; name: string; color: string };
 
-const initialGroups: AccessGroup[] = [
-  { id: "personal", name: "Pessoal", color: "#57b8e6" },
-  { id: "work", name: "Trabalho", color: "#7b8ff2" },
-];
-
-const initialAccounts: Account[] = [
-  { id: "instagram", name: "Instagram", detail: "arthur.silva", initial: "IG", color: "#f18bb4", password: "Senha protegida", category: "Redes sociais", twoFactor: true, updatedAt: "2026-08-01", groupId: "personal", strength: 65 },
-  { id: "google", name: "Google", detail: "arthur@gmail.com", initial: "G", color: "#79a7ff", password: "Senha protegida", category: "Trabalho", twoFactor: true, updatedAt: "2026-07-20", groupId: "work", strength: 50 },
-  { id: "netflix", name: "Netflix", detail: "Família", initial: "N", color: "#ff6f78", password: "Senha protegida", category: "Entretenimento", twoFactor: false, updatedAt: "2026-03-01", groupId: "personal", strength: 45 },
-  { id: "nubank", name: "Nubank", detail: "Conta pessoal", initial: "NU", color: "#a77af7", password: "Senha protegida", category: "Finanças", twoFactor: true, updatedAt: "2026-08-10", groupId: "personal", strength: 50 },
-];
-
 const commonPasswords = new Set(["123456", "password", "qwerty", "senha", "senha123", "admin", "letmein"]);
 
 function passwordStrength(password: string) {
@@ -96,10 +84,13 @@ export default function Home() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState("");
-  const [groups, setGroups] = useState(initialGroups);
-  const [activeGroupId, setActiveGroupId] = useState("personal");
-  const [accounts, setAccounts] = useState(initialAccounts);
-  const [profileName, setProfileName] = useState("Arthur Silva");
+  const [vaultBusy, setVaultBusy] = useState(false);
+  const [vaultError, setVaultError] = useState("");
+  const [profileId, setProfileId] = useState<string | null>(null);
+  const [groups, setGroups] = useState<AccessGroup[]>([]);
+  const [activeGroupId, setActiveGroupId] = useState("all");
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [profileName, setProfileName] = useState("Usuário Safe Hero");
   const [profileDescription, setProfileDescription] = useState("Cofre pessoal Safe Hero");
   const editingAccount = accounts.find((account) => account.id === editingId);
   const activeGroup = groups.find((group) => group.id === activeGroupId);
@@ -124,25 +115,33 @@ export default function Home() {
       setSession(nextSession);
       setAuthReady(true);
       if (nextSession) void loadVaultData(nextSession.user.id);
+      else clearVaultState();
     });
 
     return () => listener.subscription.unsubscribe();
   }, []);
 
   async function loadVaultData(userId: string) {
+    setVaultError("");
+    setProfileId(null);
+    setGroups([]);
+    setAccounts([]);
+    setActiveGroupId("all");
     const [profileResult, groupResult, accountResult] = await Promise.all([
-      supabase.from("profiles").select("display_name, description").eq("auth_user_id", userId).maybeSingle(),
+      supabase.from("profiles").select("id, display_name, description").eq("auth_user_id", userId).maybeSingle(),
       supabase.from("access_groups").select("id, source_reference, name, color").eq("auth_user_id", userId).order("created_at"),
       supabase.from("accesses").select("id, source_reference, application_name, login_identifier, initials, color, category, two_factor_enabled, password_updated_at, group_id, password_strength").eq("auth_user_id", userId).order("created_at"),
     ]);
 
     if (profileResult.data) {
+      setProfileId(profileResult.data.id);
       setProfileName(profileResult.data.display_name);
       setProfileDescription(profileResult.data.description);
     }
-    if (groupResult.data?.length) {
-      setGroups(groupResult.data.map((group) => ({ id: group.id, name: group.name, color: group.color })));
-      setActiveGroupId(groupResult.data[0].id);
+    if (groupResult.data) {
+      const ownGroups = groupResult.data.map((group) => ({ id: group.id, name: group.name, color: group.color }));
+      setGroups(ownGroups);
+      setActiveGroupId(ownGroups[0]?.id || "all");
     }
     if (accountResult.data) {
       setAccounts(accountResult.data.map((account) => ({
@@ -159,6 +158,23 @@ export default function Home() {
         strength: account.password_strength ?? 0,
       })));
     }
+
+    if (profileResult.error || groupResult.error || accountResult.error) {
+      setVaultError("Não foi possível carregar seu cofre privado. Tente novamente.");
+    }
+  }
+
+  function clearVaultState() {
+    setProfileId(null);
+    setGroups([]);
+    setAccounts([]);
+    setActiveGroupId("all");
+    setProfileName("Usuário Safe Hero");
+    setProfileDescription("Cofre pessoal Safe Hero");
+    setVisible(null);
+    setEditingId(null);
+    setShowAdd(false);
+    setShowGroups(false);
   }
 
   async function submitAuth(formData: FormData) {
@@ -203,32 +219,89 @@ export default function Home() {
     closeProfile();
   }
 
-  function addAccount(formData: FormData) {
+  async function addAccount(formData: FormData) {
+    if (!session || !profileId) {
+      setVaultError("Seu cofre ainda está sendo preparado. Tente novamente em instantes.");
+      return;
+    }
     const name = String(formData.get("name") || "Novo acesso");
     const detail = String(formData.get("login") || "Login pessoal");
     const password = String(formData.get("password") || "nova-senha");
     const twoFactor = formData.get("twoFactor") === "on";
     const groupId = String(formData.get("groupId") || (activeGroupId === "all" ? groups[0]?.id : activeGroupId));
-    setAccounts((current) => [{ id: `account-${Date.now()}`, name, detail, initial: name.slice(0, 2).toUpperCase(), color: "#72c6e8", password, category: "Pessoal", twoFactor, updatedAt: new Date().toISOString(), groupId }, ...current]);
+    if (!groups.some((group) => group.id === groupId)) {
+      setVaultError("Crie ou selecione um grupo antes de salvar o acesso.");
+      return;
+    }
+
+    const updatedAt = new Date().toISOString();
+    const initial = name.slice(0, 2).toUpperCase();
+    const strength = passwordStrength(password);
+    setVaultBusy(true);
+    setVaultError("");
+    const { data, error } = await supabase.from("accesses").insert({
+      profile_id: profileId,
+      group_id: groupId,
+      auth_user_id: session.user.id,
+      source_reference: `access-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      application_name: name,
+      login_identifier: detail,
+      initials: initial,
+      color: "#72c6e8",
+      category: "Pessoal",
+      two_factor_enabled: twoFactor,
+      password_strength: strength,
+      secret_status: "pending_encryption",
+      password_updated_at: updatedAt,
+    }).select("id").single();
+    setVaultBusy(false);
+    if (error || !data) {
+      setVaultError("Não foi possível salvar o acesso no seu cofre privado.");
+      return;
+    }
+
+    setAccounts((current) => [{ id: data.id, name, detail, initial, color: "#72c6e8", password, category: "Pessoal", twoFactor, updatedAt, groupId, strength }, ...current]);
     setShowAdd(false);
   }
 
-  function updateAccount(formData: FormData) {
-    if (!editingId) return;
+  async function updateAccount(formData: FormData) {
+    if (!editingId || !session || !profileId || !editingAccount) return;
     const name = String(formData.get("name") || "Acesso");
     const detail = String(formData.get("login") || "Login pessoal");
     const password = String(formData.get("password") || "");
     const twoFactor = formData.get("twoFactor") === "on";
     const groupId = String(formData.get("groupId") || groups[0]?.id);
+    const passwordChanged = password !== "Senha protegida";
+    const updatedAt = passwordChanged ? new Date().toISOString() : editingAccount.updatedAt;
+    const strength = passwordChanged ? passwordStrength(password) : editingAccount.strength;
+
+    setVaultBusy(true);
+    setVaultError("");
+    const { data, error } = await supabase.from("accesses").update({
+      application_name: name,
+      login_identifier: detail,
+      initials: name.slice(0, 2).toUpperCase(),
+      two_factor_enabled: twoFactor,
+      group_id: groupId,
+      password_strength: strength,
+      password_updated_at: updatedAt,
+      updated_at: new Date().toISOString(),
+    }).eq("id", editingId).eq("auth_user_id", session.user.id).eq("profile_id", profileId).select("id").maybeSingle();
+    setVaultBusy(false);
+    if (error || !data) {
+      setVaultError("Não foi possível atualizar este acesso.");
+      return;
+    }
+
     setAccounts((current) => current.map((account) => account.id === editingId
-      ? { ...account, name, detail, password, twoFactor, groupId, updatedAt: new Date().toISOString(), initial: name.slice(0, 2).toUpperCase() }
+      ? { ...account, name, detail, password: passwordChanged ? password : account.password, twoFactor, groupId, updatedAt, strength, initial: name.slice(0, 2).toUpperCase() }
       : account));
     setVisible(null);
     setEditingId(null);
   }
 
   async function deleteAccount() {
-    if (!editingId || !session) return;
+    if (!editingId || !session || !profileId) return;
     if (confirmDeleteId !== editingId) {
       setConfirmDeleteId(editingId);
       setDeleteError("");
@@ -239,12 +312,15 @@ export default function Home() {
     setDeleteError("");
     const isDatabaseId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(editingId);
     if (isDatabaseId) {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("accesses")
         .delete()
         .eq("id", editingId)
-        .eq("auth_user_id", session.user.id);
-      if (error) {
+        .eq("auth_user_id", session.user.id)
+        .eq("profile_id", profileId)
+        .select("id")
+        .maybeSingle();
+      if (error || !data) {
         setDeleteBusy(false);
         setDeleteError("Não foi possível excluir o acesso. Tente novamente.");
         return;
@@ -258,12 +334,28 @@ export default function Home() {
     setDeleteBusy(false);
   }
 
-  function createGroup(formData: FormData) {
+  async function createGroup(formData: FormData) {
+    if (!session || !profileId) return;
     const name = String(formData.get("groupName") || "").trim();
     if (!name) return;
     const palette = ["#57b8e6", "#7b8ff2", "#56b99a", "#ed9e63", "#c47ed8"];
-    const id = `group-${Date.now()}`;
-    setGroups((current) => [...current, { id, name, color: palette[current.length % palette.length] }]);
+    const color = palette[groups.length % palette.length];
+    setVaultBusy(true);
+    setVaultError("");
+    const { data, error } = await supabase.from("access_groups").insert({
+      profile_id: profileId,
+      auth_user_id: session.user.id,
+      source_reference: `group-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name,
+      color,
+    }).select("id").single();
+    setVaultBusy(false);
+    if (error || !data) {
+      setVaultError("Não foi possível criar o grupo no seu cofre privado.");
+      return;
+    }
+    const id = data.id;
+    setGroups((current) => [...current, { id, name, color }]);
     setActiveGroupId(id);
     setShowGroups(false);
     setQuery("");
@@ -275,9 +367,22 @@ export default function Home() {
     setActiveTab("Início");
   }
 
-  function updateProfile(formData: FormData) {
+  async function updateProfile(formData: FormData) {
+    if (!session || !profileId) return;
     const name = String(formData.get("profileName") || "").trim();
     const description = String(formData.get("profileDescription") || "").trim();
+    setVaultBusy(true);
+    setVaultError("");
+    const { data, error } = await supabase.from("profiles").update({
+      display_name: name,
+      description,
+      updated_at: new Date().toISOString(),
+    }).eq("id", profileId).eq("auth_user_id", session.user.id).select("id").maybeSingle();
+    setVaultBusy(false);
+    if (error || !data) {
+      setVaultError("Não foi possível atualizar o perfil.");
+      return;
+    }
     if (name) setProfileName(name);
     if (description) setProfileDescription(description);
     setEditingProfile(false);
@@ -375,7 +480,7 @@ export default function Home() {
 
         {showAdd && (
           <div className="modal-backdrop" role="presentation" onMouseDown={() => setShowAdd(false)}>
-            <form className="add-sheet" onSubmit={(event) => { event.preventDefault(); addAccount(new FormData(event.currentTarget)); }} onMouseDown={(event) => event.stopPropagation()}>
+            <form className="add-sheet" onSubmit={(event) => { event.preventDefault(); void addAccount(new FormData(event.currentTarget)); }} onMouseDown={(event) => event.stopPropagation()}>
               <div className="sheet-handle" />
               <div className="sheet-title"><div><p>NOVO ACESSO</p><h2>Proteja uma nova conta</h2></div><button type="button" onClick={() => setShowAdd(false)} aria-label="Fechar">×</button></div>
               <label>Aplicativo<input name="name" placeholder="Ex.: Spotify" required autoFocus /></label>
@@ -383,14 +488,15 @@ export default function Home() {
               <label>Senha<input name="password" type="password" placeholder="Digite uma senha segura" required /></label>
               <label>Grupo<select name="groupId" defaultValue={activeGroupId === "all" ? groups[0]?.id : activeGroupId}>{groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}</select></label>
               <label className="toggle-field"><input name="twoFactor" type="checkbox" /><span><strong>Autenticação em dois fatores</strong><small>Marque se esta conta usa 2FA.</small></span></label>
-              <button className="save-button" type="submit">Salvar no cofre</button>
+              <button className="save-button" type="submit" disabled={vaultBusy}>{vaultBusy ? "Salvando..." : "Salvar no cofre"}</button>
+              {vaultError && <p className="delete-error" role="alert">{vaultError}</p>}
             </form>
           </div>
         )}
 
         {editingAccount && (
           <div className="modal-backdrop edit-backdrop" role="presentation" onMouseDown={() => { setEditingId(null); setConfirmDeleteId(null); }}>
-            <form className="add-sheet edit-sheet" onSubmit={(event) => { event.preventDefault(); updateAccount(new FormData(event.currentTarget)); }} onMouseDown={(event) => event.stopPropagation()}>
+            <form className="add-sheet edit-sheet" onSubmit={(event) => { event.preventDefault(); void updateAccount(new FormData(event.currentTarget)); }} onMouseDown={(event) => event.stopPropagation()}>
               <div className="sheet-handle" />
               <div className="sheet-title"><div><p>EDITAR ACESSO</p><h2>Atualize sua conta</h2></div><button type="button" onClick={() => { setEditingId(null); setConfirmDeleteId(null); }} aria-label="Fechar">×</button></div>
               <label>Aplicativo<input name="name" defaultValue={editingAccount.name} required autoFocus /></label>
@@ -398,10 +504,10 @@ export default function Home() {
               <label>Senha<div className="password-input-wrap"><input name="password" type={showEditPassword ? "text" : "password"} defaultValue={editingAccount.password} required /><button type="button" onClick={() => setShowEditPassword((current) => !current)} aria-label={showEditPassword ? "Ocultar senha" : "Mostrar senha"}>{showEditPassword ? "◉" : "◎"}</button></div></label>
               <label>Grupo<select name="groupId" defaultValue={editingAccount.groupId}>{groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}</select></label>
               <label className="toggle-field"><input name="twoFactor" type="checkbox" defaultChecked={editingAccount.twoFactor} /><span><strong>Autenticação em dois fatores</strong><small>Marque se esta conta usa 2FA.</small></span></label>
-              <button className="save-button" type="submit">Salvar alterações</button>
+              <button className="save-button" type="submit" disabled={vaultBusy}>{vaultBusy ? "Salvando..." : "Salvar alterações"}</button>
               <button className={`delete-access-button ${confirmDeleteId === editingAccount.id ? "confirm" : ""}`} type="button" onClick={() => void deleteAccount()} disabled={deleteBusy}><span aria-hidden="true">⌫</span>{deleteBusy ? "Excluindo..." : confirmDeleteId === editingAccount.id ? "Confirmar exclusão" : "Excluir acesso"}</button>
               {confirmDeleteId === editingAccount.id && <button className="cancel-delete-button" type="button" onClick={() => setConfirmDeleteId(null)}>Cancelar exclusão</button>}
-              {deleteError && <p className="delete-error" role="alert">{deleteError}</p>}
+              {(deleteError || vaultError) && <p className="delete-error" role="alert">{deleteError || vaultError}</p>}
             </form>
           </div>
         )}
@@ -417,10 +523,11 @@ export default function Home() {
                   return <button key={group.id} className={activeGroupId === group.id ? "selected" : ""} onClick={() => { setActiveGroupId(group.id); setShowGroups(false); setQuery(""); }}><span className="group-avatar" style={{ background: group.color }}>{group.name.slice(0, 2).toUpperCase()}</span><span><strong>{group.name}</strong><small>{count} {count === 1 ? "item" : "itens"}</small></span><b>{activeGroupId === group.id ? "✓" : "›"}</b></button>;
                 })}
               </div>
-              <form className="new-group-form" onSubmit={(event) => { event.preventDefault(); createGroup(new FormData(event.currentTarget)); }}>
+              <form className="new-group-form" onSubmit={(event) => { event.preventDefault(); void createGroup(new FormData(event.currentTarget)); }}>
                 <label>Novo grupo<input name="groupName" placeholder="Ex.: Família" maxLength={24} required /></label>
-                <button type="submit" aria-label="Criar grupo">+</button>
+                <button type="submit" aria-label="Criar grupo" disabled={vaultBusy}>+</button>
               </form>
+              {vaultError && <p className="delete-error" role="alert">{vaultError}</p>}
             </section>
           </div>
         )}
@@ -430,10 +537,11 @@ export default function Home() {
             <section className="profile-sheet" role="dialog" aria-modal="true" aria-labelledby="profile-title" onMouseDown={(event) => event.stopPropagation()}>
               <div className="sheet-title"><div><p>{editingProfile ? "EDITAR PERFIL" : "MEU PERFIL"}</p><h2 id="profile-title">{editingProfile ? "Atualize seus dados" : "Sua conta Safe Hero"}</h2></div><button type="button" onClick={closeProfile} aria-label="Fechar">×</button></div>
               {editingProfile ? (
-                <form className="profile-edit-form" onSubmit={(event) => { event.preventDefault(); updateProfile(new FormData(event.currentTarget)); }}>
+                <form className="profile-edit-form" onSubmit={(event) => { event.preventDefault(); void updateProfile(new FormData(event.currentTarget)); }}>
                   <label>Nome<input name="profileName" defaultValue={profileName} maxLength={40} required autoFocus /></label>
                   <label>Descrição<input name="profileDescription" defaultValue={profileDescription} maxLength={60} required /></label>
-                  <button className="save-button" type="submit">Salvar alterações</button>
+                  <button className="save-button" type="submit" disabled={vaultBusy}>{vaultBusy ? "Salvando..." : "Salvar alterações"}</button>
+                  {vaultError && <p className="delete-error" role="alert">{vaultError}</p>}
                   <button className="secondary-button" type="button" onClick={() => setEditingProfile(false)}>Cancelar</button>
                 </form>
               ) : (
