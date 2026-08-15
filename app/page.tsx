@@ -77,6 +77,7 @@ export default function Home() {
   const [showAdd, setShowAdd] = useState(false);
   const [showGroups, setShowGroups] = useState(false);
   const [showSecurity, setShowSecurity] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
   const [showEditPassword, setShowEditPassword] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [groups, setGroups] = useState(initialGroups);
@@ -126,6 +127,11 @@ export default function Home() {
     setQuery("");
   }
 
+  function closeProfile() {
+    setShowProfile(false);
+    setActiveTab("Início");
+  }
+
   return (
     <main className="page-shell">
       <section className="phone-app" aria-label="Aplicativo Safe Hero">
@@ -168,8 +174,16 @@ export default function Home() {
         </div>
 
         <nav className="bottom-nav" aria-label="Navegação principal">
-          {[["⌂", "Início"], ["▦", "Cofre"], ["+", "Adicionar"], ["⚙", "Ajustes"]].map(([icon, label]) => (
-            <button key={label} className={`${activeTab === label ? "active" : ""} ${label === "Adicionar" ? "add-nav" : ""}`} onClick={() => label === "Adicionar" ? setShowAdd(true) : setActiveTab(label)}><span>{icon}</span><small>{label}</small></button>
+          {[["⌂", "Início"], ["▦", "Cofre"], ["+", "Adicionar"], ["◉", "Perfil"], ["⚙", "Ajustes"]].map(([icon, label]) => (
+            <button
+              key={label}
+              className={`${activeTab === label ? "active" : ""} ${label === "Adicionar" ? "add-nav" : ""}`}
+              onClick={() => {
+                if (label === "Adicionar") setShowAdd(true);
+                else if (label === "Perfil") { setActiveTab(label); setShowProfile(true); }
+                else setActiveTab(label);
+              }}
+            ><span>{icon}</span><small>{label}</small></button>
           ))}
         </nav>
 
@@ -218,6 +232,25 @@ export default function Home() {
                 <label>Novo grupo<input name="groupName" placeholder="Ex.: Família" maxLength={24} required /></label>
                 <button type="submit" aria-label="Criar grupo">+</button>
               </form>
+            </section>
+          </div>
+        )}
+
+        {showProfile && (
+          <div className="modal-backdrop edit-backdrop" role="presentation" onMouseDown={closeProfile}>
+            <section className="profile-sheet" role="dialog" aria-modal="true" aria-labelledby="profile-title" onMouseDown={(event) => event.stopPropagation()}>
+              <div className="sheet-title"><div><p>MEU PERFIL</p><h2 id="profile-title">Sua conta Safe Hero</h2></div><button type="button" onClick={closeProfile} aria-label="Fechar">×</button></div>
+              <div className="profile-hero">
+                <div className="profile-avatar">AS</div>
+                <div><h3>Arthur Silva</h3><p>Cofre pessoal Safe Hero</p></div>
+              </div>
+              <div className="profile-stats" aria-label="Resumo do perfil">
+                <div><strong>{accounts.length}</strong><span>Acessos</span></div>
+                <div><strong>{groups.length}</strong><span>Grupos</span></div>
+                <div><strong>{security.score}</strong><span>Proteção</span></div>
+              </div>
+              <div className="profile-detail"><span>Grupo ativo</span><strong>{activeGroupId === "all" ? "Todos os acessos" : activeGroup?.name || "Nenhum grupo"}</strong></div>
+              <button className="save-button" type="button" onClick={closeProfile}>Fechar perfil</button>
             </section>
           </div>
         )}
