@@ -1,6 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { Session } from "@supabase/supabase-js";
+import { supabase } from "../lib/supabase";
 
 type Account = {
   id: string;
@@ -13,6 +15,7 @@ type Account = {
   twoFactor: boolean;
   updatedAt: string;
   groupId: string;
+  strength?: number;
 };
 
 type AccessGroup = { id: string; name: string; color: string };
@@ -23,10 +26,10 @@ const initialGroups: AccessGroup[] = [
 ];
 
 const initialAccounts: Account[] = [
-  { id: "instagram", name: "Instagram", detail: "arthur.silva", initial: "IG", color: "#f18bb4", password: "hero#2026", category: "Redes sociais", twoFactor: true, updatedAt: "2026-08-01", groupId: "personal" },
-  { id: "google", name: "Google", detail: "arthur@gmail.com", initial: "G", color: "#79a7ff", password: "safe-access", category: "Trabalho", twoFactor: true, updatedAt: "2026-07-20", groupId: "work" },
-  { id: "netflix", name: "Netflix", detail: "Família", initial: "N", color: "#ff6f78", password: "stream123", category: "Entretenimento", twoFactor: false, updatedAt: "2026-03-01", groupId: "personal" },
-  { id: "nubank", name: "Nubank", detail: "Conta pessoal", initial: "NU", color: "#a77af7", password: "bank-guard", category: "Finanças", twoFactor: true, updatedAt: "2026-08-10", groupId: "personal" },
+  { id: "instagram", name: "Instagram", detail: "arthur.silva", initial: "IG", color: "#f18bb4", password: "Senha protegida", category: "Redes sociais", twoFactor: true, updatedAt: "2026-08-01", groupId: "personal", strength: 65 },
+  { id: "google", name: "Google", detail: "arthur@gmail.com", initial: "G", color: "#79a7ff", password: "Senha protegida", category: "Trabalho", twoFactor: true, updatedAt: "2026-07-20", groupId: "work", strength: 50 },
+  { id: "netflix", name: "Netflix", detail: "Família", initial: "N", color: "#ff6f78", password: "Senha protegida", category: "Entretenimento", twoFactor: false, updatedAt: "2026-03-01", groupId: "personal", strength: 45 },
+  { id: "nubank", name: "Nubank", detail: "Conta pessoal", initial: "NU", color: "#a77af7", password: "Senha protegida", category: "Finanças", twoFactor: true, updatedAt: "2026-08-10", groupId: "personal", strength: 50 },
 ];
 
 const commonPasswords = new Set(["123456", "password", "qwerty", "senha", "senha123", "admin", "letmein"]);
@@ -46,7 +49,7 @@ function passwordStrength(password: string) {
 function buildSecurityReport(accounts: Account[]) {
   if (!accounts.length) return { score: 0, title: "Cofre vazio", message: "Adicione acessos para iniciar a análise.", strong: 0, reused: 0, common: 0, stale: 0, twoFactor: 0 };
 
-  const strengths = accounts.map((account) => passwordStrength(account.password));
+  const strengths = accounts.map((account) => account.strength ?? passwordStrength(account.password));
   const averageStrength = strengths.reduce((total, value) => total + value, 0) / accounts.length;
   const passwordCounts = accounts.reduce<Record<string, number>>((counts, account) => {
     counts[account.password] = (counts[account.password] || 0) + 1;
@@ -71,6 +74,15 @@ function buildSecurityReport(accounts: Account[]) {
 }
 
 export default function Home() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState("");
+  const [authMessage, setAuthMessage] = useState("");
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [passkeySupported, setPasskeySupported] = useState(false);
+  const [profileAuthMessage, setProfileAuthMessage] = useState("");
   const [query, setQuery] = useState("");
   const [visible, setVisible] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("Início");
@@ -95,6 +107,98 @@ export default function Home() {
     const term = query.toLowerCase();
     return groupAccounts.filter((account) => `${account.name} ${account.detail} ${account.category}`.toLowerCase().includes(term));
   }, [groupAccounts, query]);
+
+  useEffect(() => {
+    setPasskeySupported(typeof window !== "undefined" && "PublicKeyCredential" in window);
+
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setAuthReady(true);
+      if (data.session) void loadVaultData(data.session.user.id);
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      setAuthReady(true);
+      if (nextSession) void loadVaultData(nextSession.user.id);
+    });
+
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  async function loadVaultData(userId: string) {
+    const [profileResult, groupResult, accountResult] = await Promise.all([
+      supabase.from("profiles").select("display_name, description").eq("auth_user_id", userId).maybeSingle(),
+      supabase.from("access_groups").select("id, source_reference, name, color").eq("auth_user_id", userId).order("created_at"),
+      supabase.from("accesses").select("id, source_reference, application_name, login_identifier, initials, color, category, two_factor_enabled, password_updated_at, group_id, password_strength").eq("auth_user_id", userId).order("created_at"),
+    ]);
+
+    if (profileResult.data) {
+      setProfileName(profileResult.data.display_name);
+      setProfileDescription(profileResult.data.description);
+    }
+    if (groupResult.data?.length) {
+      setGroups(groupResult.data.map((group) => ({ id: group.id, name: group.name, color: group.color })));
+      setActiveGroupId(groupResult.data[0].id);
+    }
+    if (accountResult.data) {
+      setAccounts(accountResult.data.map((account) => ({
+        id: account.id,
+        name: account.application_name,
+        detail: account.login_identifier,
+        initial: account.initials,
+        color: account.color,
+        password: "Senha protegida",
+        category: account.category,
+        twoFactor: account.two_factor_enabled,
+        updatedAt: account.password_updated_at || new Date().toISOString(),
+        groupId: account.group_id,
+        strength: account.password_strength ?? 0,
+      })));
+    }
+  }
+
+  async function submitAuth(formData: FormData) {
+    const email = String(formData.get("email") || "").trim();
+    const password = String(formData.get("password") || "");
+    const displayName = String(formData.get("displayName") || "").trim();
+    setAuthBusy(true);
+    setAuthError("");
+    setAuthMessage("");
+
+    const result = authMode === "login"
+      ? await supabase.auth.signInWithPassword({ email, password })
+      : await supabase.auth.signUp({ email, password, options: { data: { display_name: displayName }, emailRedirectTo: window.location.origin } });
+
+    setAuthBusy(false);
+    if (result.error) {
+      setAuthError(authMode === "login" ? "Login ou senha inválidos." : result.error.message);
+      return;
+    }
+    if (authMode === "register" && !result.data.session) {
+      setAuthMessage("Conta criada. Confirme seu e-mail para entrar no Safe Hero.");
+    }
+  }
+
+  async function signInWithBiometrics() {
+    setAuthBusy(true);
+    setAuthError("");
+    setAuthMessage("");
+    const { error } = await supabase.auth.signInWithPasskey();
+    setAuthBusy(false);
+    if (error) setAuthError("Não foi possível validar a biometria neste dispositivo.");
+  }
+
+  async function registerBiometrics() {
+    setProfileAuthMessage("");
+    const { error } = await supabase.auth.registerPasskey();
+    setProfileAuthMessage(error ? "Não foi possível ativar a biometria." : "Biometria ativada neste dispositivo.");
+  }
+
+  async function signOut() {
+    await supabase.auth.signOut();
+    closeProfile();
+  }
 
   function addAccount(formData: FormData) {
     const name = String(formData.get("name") || "Novo acesso");
@@ -143,6 +247,41 @@ export default function Home() {
     if (name) setProfileName(name);
     if (description) setProfileDescription(description);
     setEditingProfile(false);
+  }
+
+  if (!authReady) {
+    return (
+      <main className="page-shell">
+        <section className="phone-app auth-app" aria-label="Carregando Safe Hero">
+          <div className="auth-loading"><div className="auth-shield">✓</div><strong>Safe Hero</strong><span>Verificando sua proteção...</span></div>
+        </section>
+      </main>
+    );
+  }
+
+  if (!session) {
+    return (
+      <main className="page-shell">
+        <section className="phone-app auth-app" aria-label="Autenticação Safe Hero">
+          <div className="auth-screen">
+            <div className="auth-brand"><div className="auth-shield">✓</div><div><strong>Safe Hero</strong><span>Seu cofre digital protegido</span></div></div>
+            <div className="auth-copy"><p>ACESSO SEGURO</p><h1>{authMode === "login" ? "Bem-vindo de volta" : "Crie sua conta"}</h1><span>{authMode === "login" ? "Autentique-se para acessar suas senhas e aplicativos." : "Cadastre-se para proteger e sincronizar seus acessos."}</span></div>
+            <form className="auth-form" onSubmit={(event) => { event.preventDefault(); void submitAuth(new FormData(event.currentTarget)); }}>
+              {authMode === "register" && <label>Nome<input name="displayName" autoComplete="name" placeholder="Seu nome" required /></label>}
+              <label>Login<input name="email" type="email" inputMode="email" autoComplete="email" placeholder="seu@email.com" required autoFocus /></label>
+              <label>Senha<div className="auth-password-wrap"><input name="password" type={showLoginPassword ? "text" : "password"} autoComplete={authMode === "login" ? "current-password" : "new-password"} minLength={8} placeholder="Digite sua senha" required /><button type="button" onClick={() => setShowLoginPassword((current) => !current)} aria-label={showLoginPassword ? "Ocultar senha" : "Mostrar senha"}>{showLoginPassword ? "◉" : "◎"}</button></div></label>
+              {authError && <p className="auth-feedback error" role="alert">{authError}</p>}
+              {authMessage && <p className="auth-feedback success" role="status">{authMessage}</p>}
+              <button className="auth-primary" type="submit" disabled={authBusy}>{authBusy ? "Autenticando..." : authMode === "login" ? "Entrar no Safe Hero" : "Criar conta segura"}</button>
+            </form>
+            <div className="auth-divider"><span>ou</span></div>
+            <button className="biometric-button" type="button" onClick={() => void signInWithBiometrics()} disabled={authBusy || !passkeySupported}><span className="fingerprint-icon" aria-hidden="true">◎</span><span><strong>Entrar com biometria</strong><small>{passkeySupported ? "Face ID, digital ou chave de segurança" : "Indisponível neste dispositivo"}</small></span></button>
+            <button className="auth-switch" type="button" onClick={() => { setAuthMode((current) => current === "login" ? "register" : "login"); setAuthError(""); setAuthMessage(""); }}>{authMode === "login" ? "Primeiro acesso? Criar conta" : "Já tenho uma conta"}</button>
+            <p className="auth-privacy">Seu cofre permanece bloqueado até a autenticação ser concluída.</p>
+          </div>
+        </section>
+      </main>
+    );
   }
 
   return (
@@ -272,7 +411,10 @@ export default function Home() {
                     <div><strong>{security.score}</strong><span>Proteção</span></div>
                   </div>
                   <div className="profile-detail"><span>Grupo ativo</span><strong>{activeGroupId === "all" ? "Todos os acessos" : activeGroup?.name || "Nenhum grupo"}</strong></div>
+                  <button className="secondary-button biometric-profile-button" type="button" onClick={() => void registerBiometrics()} disabled={!passkeySupported}><span aria-hidden="true">◎</span> Ativar biometria</button>
+                  {profileAuthMessage && <p className="profile-auth-message" role="status">{profileAuthMessage}</p>}
                   <button className="secondary-button edit-profile-button" type="button" onClick={() => setEditingProfile(true)}><span aria-hidden="true">&#9998;</span> Editar perfil</button>
+                  <button className="signout-button" type="button" onClick={() => void signOut()}>Sair do Safe Hero</button>
                   <button className="save-button" type="button" onClick={closeProfile}>Fechar perfil</button>
                 </>
               )}
