@@ -93,6 +93,9 @@ export default function Home() {
   const [editingProfile, setEditingProfile] = useState(false);
   const [showEditPassword, setShowEditPassword] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const [groups, setGroups] = useState(initialGroups);
   const [activeGroupId, setActiveGroupId] = useState("personal");
   const [accounts, setAccounts] = useState(initialAccounts);
@@ -224,6 +227,37 @@ export default function Home() {
     setEditingId(null);
   }
 
+  async function deleteAccount() {
+    if (!editingId || !session) return;
+    if (confirmDeleteId !== editingId) {
+      setConfirmDeleteId(editingId);
+      setDeleteError("");
+      return;
+    }
+
+    setDeleteBusy(true);
+    setDeleteError("");
+    const isDatabaseId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(editingId);
+    if (isDatabaseId) {
+      const { error } = await supabase
+        .from("accesses")
+        .delete()
+        .eq("id", editingId)
+        .eq("auth_user_id", session.user.id);
+      if (error) {
+        setDeleteBusy(false);
+        setDeleteError("Não foi possível excluir o acesso. Tente novamente.");
+        return;
+      }
+    }
+
+    setAccounts((current) => current.filter((account) => account.id !== editingId));
+    setVisible(null);
+    setEditingId(null);
+    setConfirmDeleteId(null);
+    setDeleteBusy(false);
+  }
+
   function createGroup(formData: FormData) {
     const name = String(formData.get("groupName") || "").trim();
     if (!name) return;
@@ -316,7 +350,7 @@ export default function Home() {
                 <div className="account-main"><strong>{account.name}</strong><span>{account.detail}</span></div>
                 <div className="password-preview">{visible === account.name ? account.password : "••••••••"}</div>
                 <div className="account-actions">
-                  <button className="edit-button" onClick={() => { setEditingId(account.id); setShowEditPassword(false); }} aria-label={`Editar acesso de ${account.name}`} title="Editar acesso"><span aria-hidden="true">&#9998;</span></button>
+                  <button className="edit-button" onClick={() => { setEditingId(account.id); setShowEditPassword(false); setConfirmDeleteId(null); setDeleteError(""); }} aria-label={`Editar acesso de ${account.name}`} title="Editar acesso"><span aria-hidden="true">&#9998;</span></button>
                   <button className="eye-button" onClick={() => setVisible(visible === account.name ? null : account.name)} aria-label={`${visible === account.name ? "Ocultar" : "Mostrar"} senha de ${account.name}`}>{visible === account.name ? "◉" : "◎"}</button>
                 </div>
               </article>
@@ -355,16 +389,19 @@ export default function Home() {
         )}
 
         {editingAccount && (
-          <div className="modal-backdrop edit-backdrop" role="presentation" onMouseDown={() => setEditingId(null)}>
+          <div className="modal-backdrop edit-backdrop" role="presentation" onMouseDown={() => { setEditingId(null); setConfirmDeleteId(null); }}>
             <form className="add-sheet edit-sheet" onSubmit={(event) => { event.preventDefault(); updateAccount(new FormData(event.currentTarget)); }} onMouseDown={(event) => event.stopPropagation()}>
               <div className="sheet-handle" />
-              <div className="sheet-title"><div><p>EDITAR ACESSO</p><h2>Atualize sua conta</h2></div><button type="button" onClick={() => setEditingId(null)} aria-label="Fechar">×</button></div>
+              <div className="sheet-title"><div><p>EDITAR ACESSO</p><h2>Atualize sua conta</h2></div><button type="button" onClick={() => { setEditingId(null); setConfirmDeleteId(null); }} aria-label="Fechar">×</button></div>
               <label>Aplicativo<input name="name" defaultValue={editingAccount.name} required autoFocus /></label>
               <label>Usuário ou e-mail<input name="login" defaultValue={editingAccount.detail} required /></label>
               <label>Senha<div className="password-input-wrap"><input name="password" type={showEditPassword ? "text" : "password"} defaultValue={editingAccount.password} required /><button type="button" onClick={() => setShowEditPassword((current) => !current)} aria-label={showEditPassword ? "Ocultar senha" : "Mostrar senha"}>{showEditPassword ? "◉" : "◎"}</button></div></label>
               <label>Grupo<select name="groupId" defaultValue={editingAccount.groupId}>{groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}</select></label>
               <label className="toggle-field"><input name="twoFactor" type="checkbox" defaultChecked={editingAccount.twoFactor} /><span><strong>Autenticação em dois fatores</strong><small>Marque se esta conta usa 2FA.</small></span></label>
               <button className="save-button" type="submit">Salvar alterações</button>
+              <button className={`delete-access-button ${confirmDeleteId === editingAccount.id ? "confirm" : ""}`} type="button" onClick={() => void deleteAccount()} disabled={deleteBusy}><span aria-hidden="true">⌫</span>{deleteBusy ? "Excluindo..." : confirmDeleteId === editingAccount.id ? "Confirmar exclusão" : "Excluir acesso"}</button>
+              {confirmDeleteId === editingAccount.id && <button className="cancel-delete-button" type="button" onClick={() => setConfirmDeleteId(null)}>Cancelar exclusão</button>}
+              {deleteError && <p className="delete-error" role="alert">{deleteError}</p>}
             </form>
           </div>
         )}
